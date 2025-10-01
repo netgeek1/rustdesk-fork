@@ -181,7 +181,7 @@ jobs:
             ${{ runner.os }}-pub-
 
       - name: Setup Flutter (stable) on macOS
-        uses: subosito.flutter-action@v2
+        uses: subosito/flutter-action@v2
         with:
           flutter-version: stable
 
