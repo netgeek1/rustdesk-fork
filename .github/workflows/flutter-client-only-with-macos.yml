@@ -1,4 +1,4 @@
-name: CI: Flutter client only (inject secrets & build) - Linux / Windows / macOS
+name: Flutter client only
 
 on:
   push:
