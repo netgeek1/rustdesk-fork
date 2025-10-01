@@ -1,0 +1,214 @@
+name: CI: Flutter client only (inject secrets & build) - Linux / Windows / macOS
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-linux-flutter:
+    name: Build Flutter (Linux desktop)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Inject RENDEZVOUS_SERVER & RS_PUB_KEY into Flutter + libs (Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES="
+            flutter/lib/src/constants.dart
+            flutter/lib/src/server_constants.dart
+            flutter/lib/config.dart
+            libs/hbb_common/src/config.rs
+            libs/hbbs/src/config.rs
+            libs/hbbr/src/config.rs
+          "
+          for f in $FILES; do
+            if [ -f "$f" ]; then
+              cp "$f" "$f.bak" || true
+              sed -i "s|REPLACE_WITH_RENDEZVOUS_SERVER|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f" || true
+              sed -i "s|REPLACE_WITH_RS_PUB_KEY|${{ secrets.RS_PUB_KEY }}|g" "$f" || true
+              sed -i "s|RS_PUB_KEY_PLACEHOLDER|${{ secrets.RS_PUB_KEY }}|g" "$f" || true
+              sed -i "s|rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f" || true
+              sed -i "s|https://rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f" || true
+              echo "Patched $f"
+            fi
+          done
+
+      - name: Cache Flutter pub cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('flutter/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Setup Flutter (stable)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: stable
+
+      - name: Enable Linux desktop & precache
+        run: |
+          flutter doctor -v
+          flutter config --enable-linux-desktop
+          flutter precache
+
+      - name: Build Flutter linux release
+        working-directory: flutter
+        run: |
+          flutter pub get
+          flutter build linux --release
+
+      - name: Upload Flutter linux bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-linux-client
+          path: flutter/build/linux/x64/release/bundle/**/*
+
+  build-windows-flutter:
+    name: Build Flutter (Windows desktop)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Inject RENDEZVOUS_SERVER & RS_PUB_KEY into Flutter + libs (Windows)
+        shell: pwsh
+        run: |
+          $files = @(
+            'flutter\lib\src\constants.dart',
+            'flutter\lib\src\server_constants.dart',
+            'flutter\lib\config.dart',
+            'libs\hbb_common\src\config.rs',
+            'libs\hbbs\src\config.rs',
+            'libs\hbbr\src\config.rs'
+          )
+          foreach ($f in $files) {
+            if (Test-Path $f) {
+              Copy-Item $f "$f.bak" -Force
+              (Get-Content $f) -Raw `
+                -Replace 'REPLACE_WITH_RENDEZVOUS_SERVER', '${{ secrets.RENDEZVOUS_SERVER }}' `
+                -Replace 'REPLACE_WITH_RS_PUB_KEY', '${{ secrets.RS_PUB_KEY }}' `
+                -Replace 'RS_PUB_KEY_PLACEHOLDER', '${{ secrets.RS_PUB_KEY }}' `
+                -Replace 'rendezvous.rustdesk.com', '${{ secrets.RENDEZVOUS_SERVER }}' `
+                -Replace 'https://rendezvous.rustdesk.com', '${{ secrets.RENDEZVOUS_SERVER }}' `
+                | Set-Content $f
+              Write-Host "Patched $f"
+            }
+          }
+
+      - name: Cache Flutter pub cache (Windows)
+        uses: actions/cache@v4
+        with:
+          path: |
+            C:\Users\runneradmin\AppData\Roaming\Pub\Cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('flutter/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Setup Flutter (Windows)
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: stable
+
+      - name: Enable Windows desktop and build
+        shell: pwsh
+        working-directory: flutter
+        run: |
+          flutter doctor -v
+          flutter config --enable-windows-desktop
+          flutter pub get
+          flutter build windows --release
+
+      - name: Upload Flutter windows bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-windows-client
+          path: flutter\build\windows\runner\Release\**
+
+  build-macos-flutter:
+    name: Build Flutter (macOS desktop)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout (with submodules)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Inject RENDEZVOUS_SERVER & RS_PUB_KEY into Flutter + libs (macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES="
+            flutter/lib/src/constants.dart
+            flutter/lib/src/server_constants.dart
+            flutter/lib/config.dart
+            libs/hbb_common/src/config.rs
+            libs/hbbs/src/config.rs
+            libs/hbbr/src/config.rs
+          "
+          for f in $FILES; do
+            if [ -f "$f" ]; then
+              cp "$f" "$f.bak" || true
+              # BSD sed on macOS needs the '' after -i
+              sed -i '' "s|REPLACE_WITH_RENDEZVOUS_SERVER|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f" || true
+              sed -i '' "s|REPLACE_WITH_RS_PUB_KEY|${{ secrets.RS_PUB_KEY }}|g" "$f" || true
+              sed -i '' "s|RS_PUB_KEY_PLACEHOLDER|${{ secrets.RS_PUB_KEY }}|g" "$f" || true
+              sed -i '' "s|rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f" || true
+              sed -i '' "s|https://rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f" || true
+              echo "Patched $f"
+            fi
+          done
+
+      - name: Cache Flutter pub cache (macOS)
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-pub-${{ hashFiles('flutter/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pub-
+
+      - name: Setup Flutter (stable) on macOS
+        uses: subosito.flutter-action@v2
+        with:
+          flutter-version: stable
+
+      - name: Enable macOS desktop and precache
+        run: |
+          flutter doctor -v
+          flutter config --enable-macos-desktop
+          flutter precache
+
+      - name: Build Flutter macOS release
+        working-directory: flutter
+        run: |
+          flutter pub get
+          flutter build macos --release
+
+      - name: Package macOS release (zip)
+        run: |
+          cd flutter
+          if [ -d build/macos/Build/Products/Release ]; then
+            zip -r ../flutter-macos-release.zip build/macos/Build/Products/Release
+          else
+            echo "ERROR: macOS Release dir not found"
+            exit 1
+          fi
+
+      - name: Upload Flutter macOS bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: flutter-macos-client
+          path: flutter-macos-release.zip
