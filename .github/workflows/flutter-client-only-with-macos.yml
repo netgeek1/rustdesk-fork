@@ -519,40 +519,40 @@ jobs:
         with:
           name: liblibrustdesk.a
           path: target/aarch64-apple-ios/release/liblibrustdesk.a
-- name: Inject RENDEZVOUS_SERVER & RS_PUB_KEY (Linux/macOS)
-  shell: bash
-  run: |
-    set -euo pipefail
-    FILES="
-      flutter/lib/src/constants.dart
-      flutter/lib/src/server_constants.dart
-      flutter/lib/config.dart
-      libs/hbb_common/src/config.rs
-      libs/hbbs/src/config.rs
-      libs/hbbr/src/config.rs
-    "
-    for f in $FILES; do
-      if [ -f "$f" ]; then
-        cp "$f" "$f.bak" || true
-        if [[ "$RUNNER_OS" == "macOS" ]]; then
-          # BSD sed syntax
-          sed -i '' "s|REPLACE_WITH_RENDEZVOUS_SERVER|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
-          sed -i '' "s|REPLACE_WITH_RS_PUB_KEY|${{ secrets.RS_PUB_KEY }}|g" "$f"
-          sed -i '' "s|RS_PUB_KEY_PLACEHOLDER|${{ secrets.RS_PUB_KEY }}|g" "$f"
-          sed -i '' "s|rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
-          sed -i '' "s|https://rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
-        else
-          # Linux GNU sed syntax
-          sed -i "s|REPLACE_WITH_RENDEZVOUS_SERVER|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
-          sed -i "s|REPLACE_WITH_RS_PUB_KEY|${{ secrets.RS_PUB_KEY }}|g" "$f"
-          sed -i "s|RS_PUB_KEY_PLACEHOLDER|${{ secrets.RS_PUB_KEY }}|g" "$f"
-          sed -i "s|rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
-          sed -i "s|https://rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
-        fi
-        echo "Patched $f"
-      fi
-    done
 
+      - name: Inject RENDEZVOUS_SERVER & RS_PUB_KEY (Linux/macOS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILES="
+            flutter/lib/src/constants.dart
+            flutter/lib/src/server_constants.dart
+            flutter/lib/config.dart
+            libs/hbb_common/src/config.rs
+            libs/hbbs/src/config.rs
+            libs/hbbr/src/config.rs
+          "
+          for f in $FILES; do
+            if [ -f "$f" ]; then
+              cp "$f" "$f.bak" || true
+              if [[ "$RUNNER_OS" == "macOS" ]]; then
+                # BSD sed syntax
+                sed -i '' "s|REPLACE_WITH_RENDEZVOUS_SERVER|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
+                sed -i '' "s|REPLACE_WITH_RS_PUB_KEY|${{ secrets.RS_PUB_KEY }}|g" "$f"
+                sed -i '' "s|RS_PUB_KEY_PLACEHOLDER|${{ secrets.RS_PUB_KEY }}|g" "$f"
+                sed -i '' "s|rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
+                sed -i '' "s|https://rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
+              else
+                # Linux GNU sed syntax
+                sed -i "s|REPLACE_WITH_RENDEZVOUS_SERVER|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
+                sed -i "s|REPLACE_WITH_RS_PUB_KEY|${{ secrets.RS_PUB_KEY }}|g" "$f"
+                sed -i "s|RS_PUB_KEY_PLACEHOLDER|${{ secrets.RS_PUB_KEY }}|g" "$f"
+                sed -i "s|rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
+                sed -i "s|https://rendezvous.rustdesk.com|${{ secrets.RENDEZVOUS_SERVER }}|g" "$f"
+              fi
+              echo "Patched $f"
+            fi
+          done
 
       - name: Build rustdesk
         shell: bash
