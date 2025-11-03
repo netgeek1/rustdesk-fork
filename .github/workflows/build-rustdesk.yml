@@ -1,0 +1,179 @@
+name: Build RustDesk Custom Client
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  # Embedded configuration for your self-hosted instance
+  RENDEZVOUS_SERVER: rustdesk.geektech.us
+  RELAY_SERVER: rustdesk.geektech.us
+  RS_PUB_KEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOEuuMnOZNmPt9jbluKRVh48cMf3/kkR1jwcgCK1VVmK ubuntu@instance-20250911-2325
+
+jobs:
+  build-windows:
+    name: Build Windows Client (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          choco install llvm -y
+          git clone https://github.com/microsoft/vcpkg C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg.exe install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\cargo\registry
+            ~\AppData\Local\cargo\git
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Insert custom configuration
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse -Filter config.rs | ForEach-Object {
+            (Get-Content $_.FullName) |
+            ForEach-Object {
+              $_ -replace 'DEFAULT_RENDEZVOUS_SERVER: &str = ".*"', "DEFAULT_RENDEZVOUS_SERVER: &str = `"${{ env.RENDEZVOUS_SERVER }}`""
+            } |
+            ForEach-Object {
+              $_ -replace 'DEFAULT_RELAY_SERVER: &str = ".*"', "DEFAULT_RELAY_SERVER: &str = `"${{ env.RELAY_SERVER }}`""
+            } |
+            ForEach-Object {
+              $_ -replace 'DEFAULT_RS_PUB_KEY: &str = ".*"', "DEFAULT_RS_PUB_KEY: &str = `"${{ env.RS_PUB_KEY }}`""
+            } | Set-Content $_.FullName -Encoding UTF8
+          }
+
+      - name: Build (Release)
+        run: cargo build --release --target x86_64-pc-windows-msvc
+
+      - name: Package EXE
+        run: |
+          mkdir package
+          copy target\x86_64-pc-windows-msvc\release\rustdesk.exe package\rustdesk-custom.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-windows-x64
+          path: package\rustdesk-custom.exe
+
+  build-macos:
+    name: Build macOS Client (.dmg)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          brew update
+          brew install cmake llvm pkg-config create-dmg
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: [x86_64-apple-darwin, aarch64-apple-darwin]
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Insert custom configuration
+        run: |
+          find . -name config.rs -type f -exec sed -i '' \
+          -e "s/DEFAULT_RENDEZVOUS_SERVER: &str = \".*\"/DEFAULT_RENDEZVOUS_SERVER: &str = \"${RENDEZVOUS_SERVER}\"/" \
+          -e "s/DEFAULT_RELAY_SERVER: &str = \".*\"/DEFAULT_RELAY_SERVER: &str = \"${RELAY_SERVER}\"/" \
+          -e "s/DEFAULT_RS_PUB_KEY: &str = \".*\"/DEFAULT_RS_PUB_KEY: &str = \"${RS_PUB_KEY}\"/" {} +
+
+      - name: Build universal binary
+        run: |
+          cargo build --release --target x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/rustdesk-custom \
+            target/x86_64-apple-darwin/release/rustdesk \
+            target/aarch64-apple-darwin/release/rustdesk
+
+      - name: Create DMG package
+        run: |
+          mkdir -p dist
+          cp target/universal/rustdesk-custom dist/
+          create-dmg 'dist/rustdesk-custom.dmg' dist/
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-macos
+          path: dist/rustdesk-custom.dmg
+
+  build-linux:
+    name: Build Linux Client (.AppImage)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential cmake pkg-config libvpx-dev libyuv-dev libopus-dev libssl-dev zlib1g-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Insert custom configuration
+        run: |
+          find . -name config.rs -type f -exec sed -i \
+          -e "s/DEFAULT_RENDEZVOUS_SERVER: &str = \".*\"/DEFAULT_RENDEZVOUS_SERVER: &str = \"${RENDEZVOUS_SERVER}\"/" \
+          -e "s/DEFAULT_RELAY_SERVER: &str = \".*\"/DEFAULT_RELAY_SERVER: &str = \"${RELAY_SERVER}\"/" \
+          -e "s/DEFAULT_RS_PUB_KEY: &str = \".*\"/DEFAULT_RS_PUB_KEY: &str = \"${RS_PUB_KEY}\"/" {} +
+
+      - name: Build (Release)
+        run: cargo build --release --target x86_64-unknown-linux-gnu
+
+      - name: Package AppImage
+        run: |
+          mkdir -p dist
+          cp target/x86_64-unknown-linux-gnu/release/rustdesk dist/
+          cd dist
+          appimage-tool --appimage-extract
+          appimage-tool --appimage-create rustdesk --output rustdesk-custom.AppImage
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rustdesk-linux
+          path: dist/rustdesk-custom.AppImage
