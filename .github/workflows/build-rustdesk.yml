@@ -7,89 +7,111 @@ on:
     branches: [ main ]
 
 env:
-  # Embedded configuration for your self-hosted instance
   RENDEZVOUS_SERVER: rustdesk.geektech.us
   RELAY_SERVER: rustdesk.geektech.us
   RS_PUB_KEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOEuuMnOZNmPt9jbluKRVh48cMf3/kkR1jwcgCK1VVmK ubuntu@instance-20250911-2325
 
 jobs:
-  build-windows:
-    name: Build Windows Client (.exe)
-    runs-on: windows-latest
+  build:
+    name: Build RustDesk (${{ matrix.os }}-${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # --- Windows ---
+          - os: windows-latest
+            arch: x64
+            target: x86_64-pc-windows-msvc
+            artifact: rustdesk-windows-x64.exe
+            build_cmd: cargo build --release --target x86_64-pc-windows-msvc
+            package_cmd: |
+              mkdir package
+              copy target\x86_64-pc-windows-msvc\release\rustdesk.exe package\rustdesk-windows-x64.exe
+              echo "PACKAGE_PATH=package\\rustdesk-windows-x64.exe" >> $env:GITHUB_ENV
+
+          - os: windows-latest
+            arch: arm64
+            target: aarch64-pc-windows-msvc
+            artifact: rustdesk-windows-arm64.exe
+            build_cmd: cargo build --release --target aarch64-pc-windows-msvc
+            package_cmd: |
+              mkdir package
+              copy target\aarch64-pc-windows-msvc\release\rustdesk.exe package\rustdesk-windows-arm64.exe
+              echo "PACKAGE_PATH=package\\rustdesk-windows-arm64.exe" >> $env:GITHUB_ENV
+
+          # --- macOS ---
+          - os: macos-latest
+            arch: universal
+            target: universal-apple-darwin
+            artifact: rustdesk-macos-universal.dmg
+            build_cmd: |
+              cargo build --release --target x86_64-apple-darwin
+              cargo build --release --target aarch64-apple-darwin
+              mkdir -p target/universal
+              lipo -create -output target/universal/rustdesk-custom \
+                target/x86_64-apple-darwin/release/rustdesk \
+                target/aarch64-apple-darwin/release/rustdesk
+            package_cmd: |
+              mkdir -p dist
+              cp target/universal/rustdesk-custom dist/
+              create-dmg 'dist/rustdesk-macos-universal.dmg' dist/
+              echo "PACKAGE_PATH=dist/rustdesk-macos-universal.dmg" >> $GITHUB_ENV
+
+          # --- Linux ---
+          - os: ubuntu-latest
+            arch: x64
+            target: x86_64-unknown-linux-gnu
+            artifact: rustdesk-linux-x64.AppImage
+            build_cmd: cargo build --release --target x86_64-unknown-linux-gnu
+            package_cmd: |
+              mkdir -p dist
+              cp target/x86_64-unknown-linux-gnu/release/rustdesk dist/
+              tar czf dist/rustdesk-linux-x64.AppImage -C dist rustdesk
+              echo "PACKAGE_PATH=dist/rustdesk-linux-x64.AppImage" >> $GITHUB_ENV
+
+          - os: ubuntu-latest
+            arch: arm64
+            target: aarch64-unknown-linux-gnu
+            artifact: rustdesk-linux-arm64.AppImage
+            build_cmd: cargo build --release --target aarch64-unknown-linux-gnu
+            package_cmd: |
+              mkdir -p dist
+              cp target/aarch64-unknown-linux-gnu/release/rustdesk dist/
+              tar czf dist/rustdesk-linux-arm64.AppImage -C dist rustdesk
+              echo "PACKAGE_PATH=dist/rustdesk-linux-arm64.AppImage" >> $GITHUB_ENV
+
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
         with:
           submodules: recursive
 
-      - name: Install dependencies
+      # OS-specific dependencies
+      - name: Install Linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt update
+          sudo apt install -y build-essential cmake pkg-config libvpx-dev libyuv-dev libopus-dev libssl-dev zlib1g-dev
+
+      - name: Install macOS dependencies
+        if: matrix.os == 'macos-latest'
+        run: |
+          brew update
+          brew install cmake llvm pkg-config create-dmg
+
+      - name: Install Windows dependencies
+        if: matrix.os == 'windows-latest'
         run: |
           choco install llvm -y
           git clone https://github.com/microsoft/vcpkg C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
           C:\vcpkg\vcpkg.exe install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
 
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~\AppData\Local\cargo\registry
-            ~\AppData\Local\cargo\git
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
-
-      - name: Insert custom configuration
-        shell: pwsh
-        run: |
-          Get-ChildItem -Recurse -Filter config.rs | ForEach-Object {
-            (Get-Content $_.FullName) |
-            ForEach-Object {
-              $_ -replace 'DEFAULT_RENDEZVOUS_SERVER: &str = ".*"', "DEFAULT_RENDEZVOUS_SERVER: &str = `"${{ env.RENDEZVOUS_SERVER }}`""
-            } |
-            ForEach-Object {
-              $_ -replace 'DEFAULT_RELAY_SERVER: &str = ".*"', "DEFAULT_RELAY_SERVER: &str = `"${{ env.RELAY_SERVER }}`""
-            } |
-            ForEach-Object {
-              $_ -replace 'DEFAULT_RS_PUB_KEY: &str = ".*"', "DEFAULT_RS_PUB_KEY: &str = `"${{ env.RS_PUB_KEY }}`""
-            } | Set-Content $_.FullName -Encoding UTF8
-          }
-
-      - name: Build (Release)
-        run: cargo build --release --target x86_64-pc-windows-msvc
-
-      - name: Package EXE
-        run: |
-          mkdir package
-          copy target\x86_64-pc-windows-msvc\release\rustdesk.exe package\rustdesk-custom.exe
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustdesk-windows-x64
-          path: package\rustdesk-custom.exe
-
-  build-macos:
-    name: Build macOS Client (.dmg)
-    runs-on: macos-latest
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install dependencies
-        run: |
-          brew update
-          brew install cmake llvm pkg-config create-dmg
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: [x86_64-apple-darwin, aarch64-apple-darwin]
+          targets: ${{ matrix.target }}
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -100,80 +122,21 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Insert custom configuration
-        run: |
-          find . -name config.rs -type f -exec sed -i '' \
-          -e "s/DEFAULT_RENDEZVOUS_SERVER: &str = \".*\"/DEFAULT_RENDEZVOUS_SERVER: &str = \"${RENDEZVOUS_SERVER}\"/" \
-          -e "s/DEFAULT_RELAY_SERVER: &str = \".*\"/DEFAULT_RELAY_SERVER: &str = \"${RELAY_SERVER}\"/" \
-          -e "s/DEFAULT_RS_PUB_KEY: &str = \".*\"/DEFAULT_RS_PUB_KEY: &str = \"${RS_PUB_KEY}\"/" {} +
-
-      - name: Build universal binary
-        run: |
-          cargo build --release --target x86_64-apple-darwin
-          cargo build --release --target aarch64-apple-darwin
-          mkdir -p target/universal
-          lipo -create -output target/universal/rustdesk-custom \
-            target/x86_64-apple-darwin/release/rustdesk \
-            target/aarch64-apple-darwin/release/rustdesk
-
-      - name: Create DMG package
-        run: |
-          mkdir -p dist
-          cp target/universal/rustdesk-custom dist/
-          create-dmg 'dist/rustdesk-custom.dmg' dist/
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: rustdesk-macos
-          path: dist/rustdesk-custom.dmg
-
-  build-linux:
-    name: Build Linux Client (.AppImage)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout source
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Install dependencies
-        run: |
-          sudo apt update
-          sudo apt install -y build-essential cmake pkg-config libvpx-dev libyuv-dev libopus-dev libssl-dev zlib1g-dev
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-unknown-linux-gnu
-
-      - name: Cache Cargo registry
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Insert custom configuration
+        shell: bash
         run: |
           find . -name config.rs -type f -exec sed -i \
           -e "s/DEFAULT_RENDEZVOUS_SERVER: &str = \".*\"/DEFAULT_RENDEZVOUS_SERVER: &str = \"${RENDEZVOUS_SERVER}\"/" \
           -e "s/DEFAULT_RELAY_SERVER: &str = \".*\"/DEFAULT_RELAY_SERVER: &str = \"${RELAY_SERVER}\"/" \
           -e "s/DEFAULT_RS_PUB_KEY: &str = \".*\"/DEFAULT_RS_PUB_KEY: &str = \"${RS_PUB_KEY}\"/" {} +
 
-      - name: Build (Release)
-        run: cargo build --release --target x86_64-unknown-linux-gnu
+      - name: Build
+        run: ${{ matrix.build_cmd }}
 
-      - name: Package AppImage
-        run: |
-          mkdir -p dist
-          cp target/x86_64-unknown-linux-gnu/release/rustdesk dist/
-          cd dist
-          appimage-tool --appimage-extract
-          appimage-tool --appimage-create rustdesk --output rustdesk-custom.AppImage
+      - name: Package
+        run: ${{ matrix.package_cmd }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: rustdesk-linux
-          path: dist/rustdesk-custom.AppImage
+          name: ${{ matrix.artifact }}
+          path: ${{ env.PACKAGE_PATH }}
