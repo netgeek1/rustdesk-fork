@@ -4,9 +4,19 @@ on:
   push:
     branches: [ main ]
     tags:
-      - "v*.*.*" # trigger release on semantic version tags
+      - "v*.*.*"
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Choose build type"
+        required: true
+        default: "manual"
+        type: choice
+        options:
+          - manual
+          - release
 
 env:
   RENDEZVOUS_SERVER: rustdesk.geektech.us
