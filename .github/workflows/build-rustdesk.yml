@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       build_type:
-        description: "Choose build type"
+        description: "Manual or Release build"
         required: true
         default: "manual"
         type: choice
@@ -35,60 +35,21 @@ jobs:
             arch: x64
             target: x86_64-pc-windows-msvc
             artifact: rustdesk-windows-x64.exe
-            build_cmd: cargo build --release --target x86_64-pc-windows-msvc
-            package_cmd: |
-              mkdir package
-              copy target\x86_64-pc-windows-msvc\release\rustdesk.exe package\rustdesk-windows-x64.exe
-              echo "PACKAGE_PATH=package\\rustdesk-windows-x64.exe" >> $env:GITHUB_ENV
-
           - os: windows-latest
             arch: arm64
             target: aarch64-pc-windows-msvc
             artifact: rustdesk-windows-arm64.exe
-            build_cmd: cargo build --release --target aarch64-pc-windows-msvc
-            package_cmd: |
-              mkdir package
-              copy target\aarch64-pc-windows-msvc\release\rustdesk.exe package\rustdesk-windows-arm64.exe
-              echo "PACKAGE_PATH=package\\rustdesk-windows-arm64.exe" >> $env:GITHUB_ENV
-
           - os: macos-latest
             arch: universal
-            target: universal-apple-darwin
             artifact: rustdesk-macos-universal.dmg
-            build_cmd: |
-              cargo build --release --target x86_64-apple-darwin
-              cargo build --release --target aarch64-apple-darwin
-              mkdir -p target/universal
-              lipo -create -output target/universal/rustdesk-custom \
-                target/x86_64-apple-darwin/release/rustdesk \
-                target/aarch64-apple-darwin/release/rustdesk
-            package_cmd: |
-              mkdir -p dist
-              cp target/universal/rustdesk-custom dist/
-              create-dmg 'dist/rustdesk-macos-universal.dmg' dist/
-              echo "PACKAGE_PATH=dist/rustdesk-macos-universal.dmg" >> $GITHUB_ENV
-
           - os: ubuntu-latest
             arch: x64
             target: x86_64-unknown-linux-gnu
             artifact: rustdesk-linux-x64.AppImage
-            build_cmd: cargo build --release --target x86_64-unknown-linux-gnu
-            package_cmd: |
-              mkdir -p dist
-              cp target/x86_64-unknown-linux-gnu/release/rustdesk dist/
-              tar czf dist/rustdesk-linux-x64.AppImage -C dist rustdesk
-              echo "PACKAGE_PATH=dist/rustdesk-linux-x64.AppImage" >> $GITHUB_ENV
-
           - os: ubuntu-latest
             arch: arm64
             target: aarch64-unknown-linux-gnu
             artifact: rustdesk-linux-arm64.AppImage
-            build_cmd: cargo build --release --target aarch64-unknown-linux-gnu
-            package_cmd: |
-              mkdir -p dist
-              cp target/aarch64-unknown-linux-gnu/release/rustdesk dist/
-              tar czf dist/rustdesk-linux-arm64.AppImage -C dist rustdesk
-              echo "PACKAGE_PATH=dist/rustdesk-linux-arm64.AppImage" >> $GITHUB_ENV
 
     steps:
       - name: Checkout source
@@ -96,7 +57,7 @@ jobs:
         with:
           submodules: recursive
 
-      # Platform-specific dependencies
+      # Dependencies per OS
       - name: Install Linux deps
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -115,12 +76,13 @@ jobs:
           choco install llvm -y
           git clone https://github.com/microsoft/vcpkg C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
-          C:\vcpkg\vcpkg.exe install libvpx:x64-windows-static libyuv:x64-windows-static opus:x64-windows-static aom:x64-windows-static
+          # Use manifest mode (no package names)
+          C:\vcpkg\vcpkg.exe install
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target || 'x86_64-pc-windows-msvc' }}
 
       - name: Cache Cargo registry
         uses: actions/cache@v4
@@ -130,7 +92,7 @@ jobs:
             ~/.cargo/git
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Inject custom server configuration
+      - name: Inject custom configuration
         shell: bash
         run: |
           find . -name config.rs -type f -exec sed -i \
@@ -138,30 +100,35 @@ jobs:
           -e "s/DEFAULT_RELAY_SERVER: &str = \".*\"/DEFAULT_RELAY_SERVER: &str = \"${RELAY_SERVER}\"/" \
           -e "s/DEFAULT_RS_PUB_KEY: &str = \".*\"/DEFAULT_RS_PUB_KEY: &str = \"${RS_PUB_KEY}\"/" {} +
 
-      - name: Build
-        run: ${{ matrix.build_cmd }}
+      - name: Build (Rust)
+        if: matrix.os != 'macos-latest'
+        run: cargo build --release --target ${{ matrix.target }}
 
-      # 🔏 Windows signing placeholder
-      - name: Sign Windows binary (optional)
-        if: matrix.os == 'windows-latest' && env.WIN_CERT_PATH != ''
+      - name: Build macOS Universal
+        if: matrix.os == 'macos-latest'
         run: |
-          echo "Signing Windows binary..."
-          # Example:
-          # signtool sign /f $env:WIN_CERT_PATH /p $env:WIN_CERT_PASS /tr http://timestamp.digicert.com /td sha256 $env:PACKAGE_PATH
-        shell: pwsh
+          rustup target add x86_64-apple-darwin
+          rustup target add aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          cargo build --release --target aarch64-apple-darwin
+          mkdir -p target/universal
+          lipo -create -output target/universal/rustdesk-custom \
+            target/x86_64-apple-darwin/release/rustdesk \
+            target/aarch64-apple-darwin/release/rustdesk
 
-      # 🍏 macOS signing + notarization placeholder
-      - name: Sign & Notarize macOS App (optional)
-        if: matrix.os == 'macos-latest' && env.APPLE_ID != ''
+      - name: Package artifact
         run: |
-          echo "Signing and notarizing macOS app..."
-          # Example:
-          # codesign --deep --force --verify --verbose --sign "Developer ID Application: Your Name (TEAMID)" dist/rustdesk-macos-universal.dmg
-          # xcrun notarytool submit dist/rustdesk-macos-universal.dmg --apple-id "$APPLE_ID" --password "$APPLE_PASS" --team-id "$APPLE_TEAM"
-        shell: bash
-
-      - name: Package
-        run: ${{ matrix.package_cmd }}
+          mkdir -p dist
+          if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
+            cp target\\${{ matrix.target }}\\release\\rustdesk.exe dist\\${{ matrix.artifact }}
+          elif [[ "${{ matrix.os }}" == "macos-latest" ]]; then
+            cp target/universal/rustdesk-custom dist/
+            create-dmg 'dist/${{ matrix.artifact }}' dist/
+          else
+            cp target/${{ matrix.target }}/release/rustdesk dist/
+            tar czf dist/${{ matrix.artifact }} -C dist rustdesk
+          fi
+          echo "PACKAGE_PATH=dist/${{ matrix.artifact }}" >> $GITHUB_ENV
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -169,14 +136,13 @@ jobs:
           name: ${{ matrix.artifact }}
           path: ${{ env.PACKAGE_PATH }}
 
-  # --- Release stage ---
   release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
     needs: build
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - name: Download all build artifacts
+      - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
           path: release_builds
@@ -186,7 +152,5 @@ jobs:
         with:
           files: release_builds/**
           generate_release_notes: true
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
