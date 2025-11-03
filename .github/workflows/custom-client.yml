@@ -1,0 +1,25 @@
+name: Build Custom RustDesk Client
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "manual or release build"
+        required: false
+        default: "manual"
+  push:
+    branches: [ main ]
+    tags:
+      - "v*.*.*"
+
+env:
+  RENDEZVOUS_SERVER: rustdesk.geektech.us
+  RELAY_SERVER: rustdesk.geektech.us
+  RS_PUB_KEY: ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOEuuMnOZNmPt9jbluKRVh48cMf3/kkR1jwcgCK1VVmK ubuntu@instance-20250911-2325
+
+jobs:
+  custom-build:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+    with:
+      build_type: ${{ github.event.inputs.build_type || 'manual' }}
