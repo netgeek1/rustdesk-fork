@@ -57,7 +57,7 @@ jobs:
         with:
           submodules: recursive
 
-      # Dependencies per OS
+      # 🧱 Dependencies per OS
       - name: Install Linux deps
         if: matrix.os == 'ubuntu-latest'
         run: |
@@ -72,11 +72,11 @@ jobs:
 
       - name: Install Windows deps
         if: matrix.os == 'windows-latest'
+        shell: pwsh
         run: |
-          choco install llvm -y
+          if (Test-Path C:\vcpkg) { Remove-Item -Recurse -Force C:\vcpkg }
           git clone https://github.com/microsoft/vcpkg C:\vcpkg
           C:\vcpkg\bootstrap-vcpkg.bat
-          # Use manifest mode (no package names)
           C:\vcpkg\vcpkg.exe install
 
       - name: Setup Rust
@@ -92,15 +92,30 @@ jobs:
             ~/.cargo/git
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Inject custom configuration
+      # 🧩 Fix: Safe, cross-platform config injection
+      - name: Inject custom configuration (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           find . -name config.rs -type f -exec sed -i \
           -e "s/DEFAULT_RENDEZVOUS_SERVER: &str = \".*\"/DEFAULT_RENDEZVOUS_SERVER: &str = \"${RENDEZVOUS_SERVER}\"/" \
           -e "s/DEFAULT_RELAY_SERVER: &str = \".*\"/DEFAULT_RELAY_SERVER: &str = \"${RELAY_SERVER}\"/" \
-          -e "s/DEFAULT_RS_PUB_KEY: &str = \".*\"/DEFAULT_RS_PUB_KEY: &str = \"${RS_PUB_KEY}\"/" {} +
+          -e "s/DEFAULT_RS_PUB_KEY: &str = \".*\"/DEFAULT_RS_PUB_KEY: &str = \"${RS_PUB_KEY}\"/" {} + || true
 
-      - name: Build (Rust)
+      - name: Inject custom configuration (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Get-ChildItem -Recurse -Filter config.rs | ForEach-Object {
+            (Get-Content $_.FullName) -replace 'DEFAULT_RENDEZVOUS_SERVER: &str = ".*"', "DEFAULT_RENDEZVOUS_SERVER: &str = `"${{ env.RENDEZVOUS_SERVER }}`"" |
+            ForEach-Object { $_ -replace 'DEFAULT_RELAY_SERVER: &str = ".*"', "DEFAULT_RELAY_SERVER: &str = `"${{ env.RELAY_SERVER }}`"" } |
+            ForEach-Object { $_ -replace 'DEFAULT_RS_PUB_KEY: &str = ".*"', "DEFAULT_RS_PUB_KEY: &str = `"${{ env.RS_PUB_KEY }}`"" } |
+            Set-Content $_.FullName -Encoding UTF8
+          }
+          Write-Host "Config injected successfully."
+
+      # 🧱 Build steps
+      - name: Build (non-macOS)
         if: matrix.os != 'macos-latest'
         run: cargo build --release --target ${{ matrix.target }}
 
@@ -117,6 +132,7 @@ jobs:
             target/aarch64-apple-darwin/release/rustdesk
 
       - name: Package artifact
+        shell: bash
         run: |
           mkdir -p dist
           if [[ "${{ matrix.os }}" == "windows-latest" ]]; then
