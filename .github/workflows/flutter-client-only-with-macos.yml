@@ -167,6 +167,16 @@ jobs:
 
       - name: Build rustdesk
         run: |
+          # Inject custom self-hosted configuration
+          echo "🔧 Injecting custom RustDesk self-hosted config..."
+          mkdir -p src/common
+          echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
+          echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
+          echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
+          echo "✅ Config file created:"
+          cat src/common/config_default.toml
+
+          # Proceed with build
           # Windows: build RustDesk
           python3 .\build.py --portable --hwcodec --flutter --vram --skip-portable-pack
           mv ./flutter/build/windows/x64/runner/Release ./rustdesk
@@ -696,6 +706,15 @@ jobs:
 
       - name: Build rustdesk
         run: |
+          # Inject custom self-hosted configuration
+          mkdir -p src/common
+          echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
+          echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
+          echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
+          echo "Wrote src/common/config_default.toml:"
+          cat src/common/config_default.toml
+
+          # Proceed with the build
           if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]; then
             MIN_MACOS_VERSION="12.3"
             sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
@@ -703,6 +722,7 @@ jobs:
             sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
             sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           fi
+
           ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
 
       - name: create unsigned dmg
@@ -1520,6 +1540,17 @@ jobs:
             pushd /workspace
             export CARGO_INCREMENTAL=0
             export DEB_ARCH=${{ matrix.job.deb_arch }}
+ 
+           # Inject custom self-hosted configuration
+            echo "🔧 Injecting custom RustDesk self-hosted config..."
+            mkdir -p src/common
+            echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
+            echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
+            echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
+            echo "✅ Config file created:"
+            cat src/common/config_default.toml
+
+          # Proceed with build
             python3 ./build.py --flutter --skip-cargo
             for name in rustdesk*??.deb; do
               mv "$name" "${name%%.deb}-${{ matrix.job.arch }}.deb"
