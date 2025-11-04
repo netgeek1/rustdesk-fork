@@ -710,7 +710,6 @@ jobs:
           # Inject custom self-hosted configuration
           mkdir -p src/common
           echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
-          # Use the same host for relay unless you add a RELAY_SERVER secret later
           echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
           echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
           echo "Wrote src/common/config_default.toml:"
