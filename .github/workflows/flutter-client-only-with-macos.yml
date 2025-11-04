@@ -1540,14 +1540,14 @@ jobs:
             export CARGO_INCREMENTAL=0
             export DEB_ARCH=${{ matrix.job.deb_arch }}
  
-         # Inject custom self-hosted configuration
-          echo "🔧 Injecting custom RustDesk self-hosted config..."
-          mkdir -p src/common
-          echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
-          echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
-          echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
-          echo "✅ Config file created:"
-          cat src/common/config_default.toml
+          # Inject custom self-hosted configuration
+            echo "🔧 Injecting custom RustDesk self-hosted config..."
+            mkdir -p src/common
+            echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
+            echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
+            echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
+            echo "✅ Config file created:"
+            cat src/common/config_default.toml
 
           # Proceed with build
             python3 ./build.py --flutter --skip-cargo
