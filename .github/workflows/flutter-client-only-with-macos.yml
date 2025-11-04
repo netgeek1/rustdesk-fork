@@ -34,7 +34,7 @@ env:
   # vcpkg version: 2025.08.27
   # If we change the `VCPKG COMMIT_ID`, please remember:
   # 1. Call `$VCPKG_ROOT/vcpkg x-update-baseline` to update the baseline in `vcpkg.json`.
-  #  Or we may face build issue like
+  #  Or we may face build issue like 
   #  https://github.com/rustdesk/rustdesk/actions/runs/14414119794/job/40427970174
   # 2. Update the `VCPKG_COMMIT_ID` in `ci.yml` and `playground.yml`.
   VCPKG_COMMIT_ID: "120deac3062162151622ca4860575a33844ba10b"
@@ -82,6 +82,7 @@ jobs:
             }
           # - { target: aarch64-pc-windows-msvc, os: windows-2022, arch: aarch64 }
     steps:
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -112,6 +113,7 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
 
       # https://github.com/flutter/flutter/issues/155685
+
       - name: Replace engine with rustdesk custom flutter engine
         run: |
           flutter doctor -v
@@ -168,12 +170,12 @@ jobs:
       - name: Build rustdesk
         run: |
           # Inject custom self-hosted configuration
-          echo "Injecting custom RustDesk self-hosted config..."
+          echo " Injecting custom RustDesk self-hosted config..."
           mkdir -p src/common
           echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
           echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
           echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
-          echo "Config file created:"
+          echo " Config file created:"
           cat src/common/config_default.toml
 
           # Proceed with build
@@ -313,6 +315,7 @@ jobs:
             }
           # - { target: aarch64-pc-windows-msvc, os: windows-2022 }
     steps:
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -453,6 +456,7 @@ jobs:
               vcpkg-triplet: arm64-ios,
             }
     steps:
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -463,6 +467,7 @@ jobs:
       - name: Install dependencies
         run: |
           brew install nasm yasm
+
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
@@ -525,7 +530,7 @@ jobs:
         run: |
           rustup target add ${{ matrix.job.target }}
           cargo build --features flutter,hwcodec --release --target aarch64-apple-ios --lib
-
+          
       - name: Upload liblibrustdesk.a Artifacts
         uses: actions/upload-artifact@master
         with:
@@ -581,6 +586,7 @@ jobs:
               vcpkg-triplet: arm64-osx,
             }
     steps:
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -705,26 +711,23 @@ jobs:
           rustc -V
 
       - name: Build rustdesk
-        shell: bash
         run: |
           # Inject custom self-hosted configuration
+          echo " Injecting custom RustDesk self-hosted config..."
           mkdir -p src/common
           echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
-          # Use the same host for relay unless you add a RELAY_SERVER secret later
           echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
           echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
-          echo "Wrote src/common/config_default.toml:"
+          echo " Config file created:"
           cat src/common/config_default.toml
-
-          # Proceed with the build
+          # Proceed with build
           if [ "${{ matrix.job.target }}" = "aarch64-apple-darwin" ]; then
             MIN_MACOS_VERSION="12.3"
-            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*\.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
+            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET\=[0-9]*.[0-9]*/MACOSX_DEPLOYMENT_TARGET=${MIN_MACOS_VERSION}/" build.py
             sed -i -e "s/platform :osx, '.*'/platform :osx, '${MIN_MACOS_VERSION}'/" flutter/macos/Podfile
-            sed -i -e "s/osx_minimum_system_version = \"[0-9]*\.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
-            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*\.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
+            sed -i -e "s/osx_minimum_system_version = \"[0-9]*.[0-9]*\"/osx_minimum_system_version = \"${MIN_MACOS_VERSION}\"/" Cargo.toml
+            sed -i -e "s/MACOSX_DEPLOYMENT_TARGET = [0-9]*.[0-9]*;/MACOSX_DEPLOYMENT_TARGET = ${MIN_MACOS_VERSION};/" flutter/macos/Runner.xcodeproj/project.pbxproj
           fi
-
           ./build.py --flutter --hwcodec --unix-file-copy-paste ${{ matrix.job.extra-build-args }}
 
       - name: create unsigned dmg
@@ -783,6 +786,7 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ inputs.upload-artifact }}
     steps:
+
       - name: Download artifacts
         uses: actions/download-artifact@master
         with:
@@ -842,6 +846,7 @@ jobs:
               suffix: "",
             }
     steps:
+
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
@@ -1056,6 +1061,7 @@ jobs:
           mv ../rustdesk-${{ env.VERSION }}-${{ matrix.job.arch }}${{ matrix.job.suffix }}.apk .
 
       # https://github.com/r0adkll/sign-android-release/issues/84#issuecomment-1889636075
+
       - name: Setup sign tool version variable
         shell: bash
         run: |
@@ -1112,6 +1118,7 @@ jobs:
       x86_target: "" # can be ",android-x86"
       suffix: ""
     steps:
+
       - name: Free Disk Space (Ubuntu)
         uses: jlumbroso/free-disk-space@main
         with:
@@ -1238,6 +1245,7 @@ jobs:
           mv ./flutter/build/app/outputs/flutter-apk/app-${{ env.reltype }}.apk signed-apk/rustdesk-${{ env.VERSION }}-universal${{ env.suffix }}.apk
 
       # https://github.com/r0adkll/sign-android-release/issues/84#issuecomment-1889636075
+
       - name: Setup sign tool version variable
         shell: bash
         run: |
@@ -1310,6 +1318,7 @@ jobs:
               vcpkg-triplet: arm64-linux,
             }
     steps:
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -1542,14 +1551,14 @@ jobs:
             pushd /workspace
             export CARGO_INCREMENTAL=0
             export DEB_ARCH=${{ matrix.job.deb_arch }}
-
-           # Inject custom self-hosted configuration
-            echo "Injecting custom RustDesk self-hosted config..."
+ 
+          # Inject custom self-hosted configuration
+            echo " Injecting custom RustDesk self-hosted config..."
             mkdir -p src/common
             echo "rendezvous_server = \"${{ env.RENDEZVOUS_SERVER }}\"" > src/common/config_default.toml
             echo "relay_server = \"${{ env.RENDEZVOUS_SERVER }}\"" >> src/common/config_default.toml
             echo "rs_pub_key = \"${{ env.RS_PUB_KEY }}\"" >> src/common/config_default.toml
-            echo "Config file created:"
+            echo " Config file created:"
             cat src/common/config_default.toml
 
           # Proceed with build
@@ -1606,6 +1615,7 @@ jobs:
       # only x86_64 for arch since we can not find newest arm64 docker image to build
       # old arch image does not make sense for arch since it is "arch" which always update to date
       # and failed to makepkg arm64 on x86_64
+
       - name: Patch archlinux PKGBUILD
         if: matrix.job.arch == 'x86_64' && env.UPLOAD_ARTIFACT == 'true'
         run: |
@@ -1661,6 +1671,7 @@ jobs:
               extra_features: ",unix-file-copy-paste",
             }
     steps:
+
       - name: Export GitHub Actions cache environment variables
         uses: actions/github-script@v6
         with:
@@ -1869,6 +1880,7 @@ jobs:
           - { target: x86_64-unknown-linux-gnu, arch: x86_64 }
           - { target: aarch64-unknown-linux-gnu, arch: aarch64 }
     steps:
+
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
@@ -1942,6 +1954,7 @@ jobs:
               suffix: "",
             }
     steps:
+
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
@@ -2003,6 +2016,7 @@ jobs:
     env:
       RELEASE_NAME: web-basic
     steps:
+
       - name: Checkout source code
         uses: actions/checkout@v4
         with:
@@ -2026,6 +2040,7 @@ jobs:
           [[ "3.24.5" == ${{env.FLUTTER_VERSION}} ]] && git apply ${{ github.workspace }}/.github/patches/flutter_3.24.4_dropdown_menu_enableFilter.diff
 
       # https://rustdesk.com/docs/en/dev/build/web/
+
       - name: Build web
         shell: bash
         run: |
